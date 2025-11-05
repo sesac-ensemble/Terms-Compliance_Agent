@@ -87,7 +87,7 @@ def build_vectordb():
     print(f"법령 처리 완료: {len(documents)}개 청크\n")
     
     print("불공정 사례 처리 중...")
-    df = pd.read_csv('1028ver2.csv', encoding='utf-8')
+    df = pd.read_csv('불공정사례 등 데이터_(편집) - 불공정사례.csv', encoding='utf-8')
     print(f"총 사례 수: {len(df)}\n")
     
     print("=" * 60)
