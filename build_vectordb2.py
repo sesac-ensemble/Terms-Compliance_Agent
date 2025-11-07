@@ -1,5 +1,5 @@
-# pip install langchain_upstage langchain_chroma langgraph
-# build_vectordb.py
+# pip install langchain_upstage langchain_chroma langgraph langchain-community python-dotenv pandas pypdf
+# # build_vectordb.py
 
 import os
 import pandas as pd
