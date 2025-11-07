@@ -63,7 +63,7 @@ def is_valid_contract_clause(clause: str) -> tuple[bool, str]:
         '수수료', '이용료', '결제', '할인', '서비스', '제공',
         '개인정보', '보호', '이용', '관리', '통지', '동의',
         '유효', '기간', '상효', '시행', '효력', '청구', '위반',
-        '손해배상', '면책조항', '이용자', '회사', '당사자'
+        '손해배상', '면책조항', '이용자', '회사', '당사자','상품','가입','승인','고객',
     ]
     
     has_keyword = any(keyword in clause for keyword in contract_keywords)
