@@ -40,7 +40,8 @@ def load_vectordb():
     vectorstore = Chroma(
         embedding_function=embeddings,
         persist_directory="./chroma_db",
-        collection_name="contract_laws"
+        collection_name="contract_laws",
+        collection_metadata={"hnsw:space": "cosine"}
     )
     print("벡터 DB 로드 완료!\n")
     return vectorstore
@@ -116,14 +117,15 @@ def classify_type_node(state: ContractState):
 {state['cleaned_text']}
 
 유형:
-1. 서비스 일방적 변경 중단
+1. 서비스 일방적 변경·중단
 2. 기한의 이익 상실
-3. 고객 이의제기 제한
-4. 개별통지 부적절 생략
-5. 계약해지 사유 포괄적
-6. 기타
-
-위 5가지 유형에 해당하지 않으면 "6. 기타"로 분류하세요.
+3. 고객 권리 제한
+4. 통지·고지 부적절
+5. 계약 해지·변경 사유 포괄적
+6. 비용 과다 부과·환급 제한
+7. 면책·책임 전가
+8. 기타 불공정 약관
+위 7가지 유형에 해당하지 않으면 "8. 기타 불공정 약관"로 분류하세요.
 
 해당 유형만 출력하세요."""
     
