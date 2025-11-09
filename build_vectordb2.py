@@ -255,6 +255,7 @@ def build_vectordb():
         embedding=embeddings,
         persist_directory="./chroma_db",
         collection_name="contract_laws",
+        collection_metadata={"hnsw:space": "cosine"}
     )
 
     # 설정 파일 저장
