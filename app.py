@@ -507,7 +507,7 @@ def main_chatbot_ui():
         st.info(f"개선안 (반복 {current_iteration}/{MAX_ITERATIONS})에 대한 피드백을 주세요.")
 
         if SHOW_RETRIEVED_CASES:
-            with st.expander("참고한 유사 사례 보기 (비교용)", expanded=True):
+            with st.expander("참고한 유사 사례 보기", expanded=True):
                 cases = st.session_state.current_state.get('retrieved_cases_metadata', [])
                 
                 if cases:
@@ -516,9 +516,9 @@ def main_chatbot_ui():
                     for case in cases:
                         similarity = case['similarity']
                         
-                        if similarity >= 0.9:
+                        if similarity >= 0.7:
                             color = "🟢"
-                        elif similarity >= 0.8:
+                        elif similarity >= 0.5:
                             color = "🟡"
                         else:
                             color = "🟠"
