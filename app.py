@@ -468,7 +468,7 @@ def main_chatbot_ui():
     st.title("법률 약관 검토 챗봇")
     
     with st.sidebar:
-        st.header("⚙️ 검색 설정")
+        st.header("검색 설정")
         similarity_threshold_percent = st.slider(
             "유사도 임계값 (%)",
             min_value=0,
@@ -636,8 +636,8 @@ def main_chatbot_ui():
             with st.chat_message("assistant"):
                 with st.spinner("피드백을 반영하여 처리 중..."):
                     try:
-                        output = app.invoke(None, config=config, **feedback_input)
-                        st.session_state.current_state = output
+                        output = app.invoke(feedback_input, config=config)
+                        st.session_state.current_state.update(output)
                         
                         last_feedback = output.get('user_feedback', '')
                         last_retry = output.get('retry_action', '')
@@ -648,8 +648,7 @@ def main_chatbot_ui():
                                 "role": "assistant", 
                                 "content": "검토가 완료되었습니다."
                             })
-                            st.session_state.thread_id = None
-                            st.session_state.current_state = {}
+                            st.rerun()
                         else:
                             st.markdown(f"### 🔄 새로운 개선안 (반복 {output.get('iteration', '?')}/{MAX_ITERATIONS})")
                             st.markdown(output['improvement_proposal'])
