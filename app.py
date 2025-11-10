@@ -637,7 +637,7 @@ def main_chatbot_ui():
                 with st.spinner("피드백을 반영하여 처리 중..."):
                     try:
                         output = app.invoke(feedback_input, config=config)
-                        st.session_state.current_state.update(output)
+                        st.session_state.current_state = output
                         
                         last_feedback = output.get('user_feedback', '')
                         last_retry = output.get('retry_action', '')
