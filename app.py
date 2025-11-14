@@ -12,6 +12,8 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import interrupt 
 from langchain_core.tracers.context import tracing_v2_enabled
+import pypdf
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 load_dotenv()
 
@@ -112,22 +114,78 @@ def clean_text_node(state: ContractState):
 def classify_type_node(state: ContractState):
     print(f"[노드2] Solar API - 불공정 유형 분류\n")
     
-    prompt = f"""다음 약관 조항의 불공정 유형을 판단하세요:
+    prompt = f"""다음 약관 조항이 '공정'한지 '불공정'한지 판단하세요.
 
-{state['cleaned_text']}
+    [약관 조항]
+    {state['cleaned_text']}
 
-유형:
-1. 서비스 일방적 변경·중단
-2. 기한의 이익 상실
-3. 고객 권리 제한
-4. 통지·고지 부적절
-5. 계약 해지·변경 사유 포괄적
-6. 비용 과다 부과·환급 제한
-7. 면책·책임 전가
-8. 기타 불공정 약관
-위 7가지 유형에 해당하지 않으면 "8. 기타 불공정 약관"로 분류하세요.
+    [작업]
+    1. 이 조항이 '공정'한지 '불공정'한지 판단하세요.
+    2. '불공정'할 경우, 아래 [불공정 유형] 중 가장 적절한 것을 하나 선택하세요.
+    3. '공정'할 경우, '공정'이라고만 답하세요.
 
-해당 유형만 출력하세요."""
+    [불공정 유형]
+    - '서비스 일방적 변경·중단'
+    - '기한의 이익 상실'
+    - '고객 권리 제한'
+    - '통지·고지 부적절'
+    - '계약 해지·변경 사유 포괄적'
+    - '비용 과다 부과·환급 제한'
+    - '면책·책임 전가'
+    - '기타 불공정 약관'
+
+    각 '불공정 유형'의 분류 기준은 다음과 같습니다.
+    
+    [분류 기준]
+    1.  **서비스 일방적 변경·중단**
+        * 고객의 동의나 명확한 사전 고지 없이 사업자가 일방적으로 서비스(부가서비스 포함) 내용을 변경, 축소, 중단하는 조항.
+        * "제휴사 사정", "경영상의 이유" 등 포괄적이고 추상적인 이유로 서비스를 변경할 수 있도록 한 조항.
+        * 고객 동의 없이 이용 한도를 임의로 조정(증액/감액)하는 조항.
+
+    2.  **기한의 이익 상실**
+        * 고객이 대출금 등을 만기 전에 즉시 상환해야 하는 사유(기한 이익 상실)를 부당하게 규정한 조항.
+        * '1회 연체' 등 경미한 사유나 '가압류/가처분' 같이 임시적인 조치를 기한 이익 상실 사유로 정한 조항.
+        * 기한 이익 상실 전, 고객에게 시정 기회를 주는 '사전 통지'나 '독촉' 절차 없이 즉시 효력이 발생하도록 한 조항.
+        * "신용도 악화 판단 시" 등 사업자의 자의적/포괄적 판단을 근거로 한 조항.
+
+    3.  **고객 권리 제한**
+        * 고객의 법률상 권리(항변권, 상계권, 이의제기권 등)를 상당한 이유 없이 배제하거나 제한하는 조항.
+        * 이의제기나 신고 방법을 '서면'으로만 한정하여 고객의 편의를 부당하게 제한하는 조항.
+        * 변제 충당 순서(채무 상환 순서)를 고객에게 불리하게 사업자가 임의로 정하는 조항.
+        * 법률상 보장된 권리(예: 세금 분납 신청권)를 포기하도록 하는 조항.
+
+    4.  **통지·고지 부적절**
+        * 수수료 부과, 약관 변경 등 고객의 권익에 중대한 영향을 미치는 사항을 고지하는 방식이 부적절한 조항.
+        * 고객이 상시 확인하기 어려운 '홈페이지 게시', '모바일 앱 게재'나 수신 거부율이 높은 '앱 푸시(PUSH)' 등을 개별 통지 수단으로 규정한 조항.
+        * "고객 연락처가 유효하지 않으면 통지하지 않는다"와 같이 사업자의 통지 의무를 부당하게 면제하는 조항.
+
+    5.  **계약 해지·변경 사유 포괄적**
+        * "기타 상당한 이유", "본 약관 위배", "부당한 거래" 등 계약 해지/변경 사유가 추상적이거나 포괄적이어서 사업자가 자의적으로 해석할 여지를 둔 조항.
+
+    6.  **비용 과다 부과·환급 제한**
+        * 연회비, 선불카드 잔액 등의 환급을 부당하게 제한하거나 불가능하게 한 조항.
+        * 이자 외에 '취급수수료', '영업비수수료' 등 명목이 불분명한 비용을 추가로 부과하는 조항.
+        * 고객의 귀책 사유가 없음에도(예: 100% 타인 과실 사고) 위약금이나 규정 손해금을 부과하는 조항.
+        * 포인트 사용이 제한된 기간에도 소멸시효가 진행되도록 하여 고객의 재산상 권리(포인트)를 소멸시키는 조항.
+
+    7.  **면책·책임 전가**
+        * 사업자의 고의나 '경과실'로 인한 손해에 대해서도 사업자가 책임을 지지 않는다는(면책) 조항.
+        * '시스템 장애', '전산 오류' 등 사업자의 관리 영역에 속하는 문제까지 불가항력으로 규정하여 면책하는 조항.
+        * 비밀번호 유출, 개인정보 유출, 제휴사 문제 등 발생 시 사업자의 책임을 고객에게 떠넘기거나 부당하게 면제하는 조항.
+
+    8.  **기타 불공정 약관**
+        * 위 1~7번 분류에 명확히 속하지 않는 불공정 조항.
+        * (예: 부당한 재판관할 합의, 고객 의사 확인 없는 계약 자동 연장, 인지세 고객 전가, 개인정보 포괄적 수집/활용 동의, 약관의 불리한 소급 적용)
+    
+    [출력 형식]
+    불공정한 경우: 불공정 (선택한 유형, 선택한 유형이 정답이라는 확신도%)
+    공정한 경우: 공정
+    
+    [중요!]
+    '판단 근거'나 '추가 설명' 없이, 위의 [출력 형식]에 맞는 '결과 한 줄'만 정확히 출력하세요.
+
+    [판단 결과]
+    """
     
     unfair_type = llm.invoke(prompt).content.strip()
     
@@ -189,7 +247,8 @@ def retrieve_node(state: ContractState, vectorstore):
             final_laws_meta.append({
                 "index": i,
                 "similarity": similarity_score,
-                "content": doc.page_content
+                "content": doc.page_content,
+                "metadata": doc.metadata
             })
     final_laws_meta = final_laws_meta[:MAX_DISPLAY_LAWS]
 
@@ -214,41 +273,121 @@ def retrieve_node(state: ContractState, vectorstore):
 def generate_proposal_node(state: ContractState):
     print(f"[노드4] Solar API - 개선안 생성 (반복: {state['iteration']}/{MAX_ITERATIONS})\n")
     
+    # 파일 이름-법 이름 매핑 딕셔너리 추가
+    LAW_FILENAME_MAP = {
+        "1_약관법.pdf": "약관법",
+        "1-2_약관심사지침.pdf": "약관심사지침",
+        "2_금융소비자법시행령.pdf": "금융소비자법 시행령",
+        "3_금융소비자보호에관한감독규정.pdf": "금융소비자보호 감독규정",
+        "4_전자금융거래법.pdf": "전자금융거래법" 
+        # (build_vectordb.py의 pdf_files 목록과 일치시켜야 함)
+    }
+    
+    # 상태에서 필요한 정보 추출
+    unfair_type = state['unfair_type']
+    cases_meta = state.get('retrieved_cases_metadata', [])
+    laws_meta = state.get('retrieved_laws_metadata', [])
+    original_clause = state['cleaned_text']
+    
+    # 최종 출력 문자열(final_output) 조립 시작 ---
+    
+    # 0. 불공정 여부 판단
+    final_output = "### 0. 불공정 여부 판단\n"
+    if unfair_type == "공정":
+        final_output += "✅ **공정**\n"
+    else:
+        # classify_type_node가 '불공정 (유형)'을 반환하므로 하이픈 제거
+        final_output += f"❌ **{unfair_type}**\n"
+        
+    # 1. 쿼리와 유사한 사례
+    final_output += "\n### 1. 유사한 사례\n"
+    if not cases_meta:
+        final_output += "관련 사례를 찾지 못했습니다.\n"
+    else:
+        for case in cases_meta:
+            case_summary = case['content'].split('약관:')[1].split('결론:')[0].strip()
+            if len(case_summary) > 70:
+                case_summary = case_summary[:70] + "..."
+            final_output += f"* **`(유사도 {case['similarity']:.0%})`** {case_summary}\n"
+            
+    # 2. 쿼리와 유사한 법령
+    final_output += "\n### 2. 참고 법령\n"
+    if not laws_meta:
+        final_output += "관련 법령을 찾지 못했습니다.\n"
+    else:
+        for law in laws_meta:
+            similarity = law['similarity']
+            content = law['content'].strip()
+            metadata = law.get('metadata', {})
+            
+            # 메타데이터에서 파일 이름으로 법 이름 찾기
+            source_file = metadata.get('source_file', '알 수 없는 법령')
+            law_name = LAW_FILENAME_MAP.get(source_file, source_file)
+            
+            # 내용 요약 (70자)
+            if len(content) > 70:
+                content = content[:70] + "..."
+            
+            # [ㅇㅇ법] - [제ㅇ조...] 형식으로 조합
+            final_output += f"* **`(유사도 {similarity:.0%})`** **`[{law_name}]`** - {content}\n"
+
+    # --- 2. "공정"할 경우, 여기서 완료 ---
+    if unfair_type == "공정":
+        print("공정 조항으로 판단되어 개선안 생성 없이 완료.\n")
+        return {"improvement_proposal": final_output}
+
+    # --- 3. "불공정"할 경우, LLM을 호출하여 개선안 + 표 생성 ---
+    
+    print("불공정 조항으로 판단되어 LLM 개선안 생성 시작...\n")
+    
+    # 사용자 피드백 (재시도 시)
     feedback_context = ""
     if state.get('modify_reason'):
-        feedback_context = f"\n[사용자 피드백]\n{state['modify_reason']}\n위 의견을 반영해 다시 작성하세요.\n"
-    
+        feedback_context = f"\n[추가 사용자 피드백]\n{state['modify_reason']}\n위 의견을 반영해 다시 작성하세요.\n"
+
+    # LLM에 전달할 프롬프트 (인라인 diff 및 테이블 생성 요청)
     prompt = f"""당신은 법률 전문가입니다.
 
-[원본 약관 조항]
-{state['cleaned_text']}
+    [원본 약관 조항]
+    {original_clause}
 
-[불공정 유형]
-{state['unfair_type']}
+    [불공정 유형]
+    {unfair_type}
 
-[관련 시정 사례 및 법령]
-{state['related_cases']}
+    [관련 시정 사례 및 법령]
+    {state['related_cases']}
 
-{feedback_context}
+    {feedback_context}
 
-[작업]
-위 정보를 바탕으로 이 약관 조항을 공정한 약관으로 개선하세요.
+    [작업]
+    1. [원본 약관 조항]을(를) [참고 자료]를 바탕으로 개선하세요.
+    2. 원본에서 '삭제/수정'되어야 할 부분은 '~~삭제할 내용~~' (취소선)으로 표시하세요.
+    3. 원본에 '추가'되어야 할 부분은 '**추가할 내용**' (굵게)으로 표시하세요.
+    4. 원본에서 변경이 없는 부분은 그대로 두세요. (이 4가지 규칙을 조합하여 인라인 diff를 만드세요)
+    5. 이 개선의 '핵심 변경 사항'을(를) Markdown 표로 요약하세요.
 
-[중요 규칙]
-- 법 근거는 위의 "관련 시정 사례 및 법령"에 명시된 것만 사용하세요.
-- 근거 없는 법령이나 조항, 특정 기간(6개월, 90일 등)을 포함하지 마세요.
-- 관련 자료에 없는 내용은 생성하지 마세요.
-
-[출력 형식]
-1. 개선된 약관 조항
-2. 개선 사유 (관련 시정 사례 및 법령에서만 제시)
-3. 핵심 변경 사항"""
+    **[중요!!]** 반드시 다음 마크다운 형식만 따르세요.
+    '판단 근거', '추가 설명', '개선 사유' 등 지정되지 않은 항목을 절대 추가하지 마세요.
     
-    proposal = llm.invoke(prompt).content
+    [출력 형식]
+    ### 3. 개선된 약관 조항
+    (여기에 2, 3, 4번 규칙을 적용한 '인라인 diff' 텍스트를 작성)
+
+    ### 4. 핵심 변경 사항
+    | 변경 전 | 변경 후 |
+    | --- | --- |
+    | (변경 전 핵심 내용) | (변경 후 핵심 내용) |
+    """
     
-    print(f"개선안 생성 완료 (반복: {state['iteration']}/{MAX_ITERATIONS})\n")
+    # LLM 호출
+    llm_response = llm.invoke(prompt).content
     
-    return {"improvement_proposal": proposal}
+    # LLM 응답을 최종 출력에 추가
+    final_output += f"\n{llm_response}"
+    
+    print("LLM 개선안 생성 완료.\n")
+    
+    return {"improvement_proposal": final_output}
 
 def ui_feedback_node(state: ContractState):
     print(f"\n[노드5] UI 피드백 대기 (반복: {state['iteration']}/{MAX_ITERATIONS})\n")
@@ -415,6 +554,135 @@ def save_result(state: ContractState, status: str, iteration: int,
     with open(filename, 'a', encoding='utf-8') as f:
         f.write(json.dumps(result, ensure_ascii=False) + '\n')
 
+def extract_text_from_pdf(uploaded_file):
+    """PDF 파일에서 텍스트를 추출합니다."""
+    try:
+        reader = pypdf.PdfReader(uploaded_file)
+        pdf_text = ""
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                pdf_text += page_text + "\n\n"
+        return pdf_text
+    except Exception as e:
+        st.error(f"PDF 텍스트 추출 실패: {e}")
+        return ""
+
+def split_text_into_clauses(full_text: str) -> List[str]:
+    """긴 텍스트를 의미 있는 조항(Chunk) 단위로 분할합니다."""
+    # 법률 문서에 적합한 구분자 설정
+    # 예: "제 1 조", "1.", "가.", "①" 등
+    # RecursiveCharacterTextSplitter는 \n\n을 우선으로 자릅니다.
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,  # 조항 하나의 최대 길이 (조절 필요)
+        chunk_overlap=100, # 조항간 겹침
+        separators=[
+            "\n\n", "\n", ". ", " "
+        ],
+        length_function=len,
+    )
+    
+    chunks = text_splitter.split_text(full_text)
+    
+    # 너무 짧은 청크(예: 목차, 페이지 번호) 필터링
+    # 기존 'is_valid_contract_clause'의 최소 길이 검사(20자) 활용
+    valid_chunks = [
+        chunk for chunk in chunks 
+        if is_valid_contract_clause(chunk)[0] # 기존 룰베이스 검증 재활용
+    ]
+    
+    return valid_chunks
+
+def run_batch_analysis(app, chunks, similarity_threshold, vectorstore):
+    """
+    여러 개의 조항(chunks)을 순회하며 일괄 분석합니다.
+    (HITL이 없는 단순한 실행)
+    """
+    try:
+        pass
+    except Exception as e:
+        st.error(f"벡터 DB 접근 실패 (일괄 처리): {e}")
+        return
+
+    st.info(f"총 {len(chunks)}개 조항에 대한 분석을 시작합니다. (시간이 소요될 수 있습니다)")
+    
+    progress_bar = st.progress(0, text="분석 진행 중...")
+    results = [] # 최종 결과 저장
+
+    for i, chunk in enumerate(chunks):
+        
+        try:
+            # 1. 초기 상태 정의 (피드백 노드가 없으므로 단순화)
+            current_state = ContractState(
+                clause=chunk,
+                cleaned_text=chunk, # 스플리터가 이미 정제했다고 가정
+                iteration=1,
+                session_id=f"batch_{i}",
+                similarity_threshold=similarity_threshold,
+                validation_failed=False
+            )
+
+            # 2. 노드 순차 실행 (LangGraph 'app' 대신 직접 호출)
+            
+            # (Clean 노드는 split_text_into_clauses에서 처리)
+            
+            # [노드2] 유형 분류
+            type_result = classify_type_node(current_state)
+            current_state.update(type_result)
+            
+            # [노드3] 검색
+            retrieve_result = retrieve_node(current_state, vectorstore)
+            current_state.update(retrieve_result)
+            
+            # [노드4] 개선안 생성
+            proposal_result = generate_proposal_node(current_state)
+            current_state.update(proposal_result)
+            
+            # 3. 결과 저장
+            results.append({
+                "original_clause": chunk,
+                "unfair_type": current_state['unfair_type'],
+                "improvement_proposal": current_state['improvement_proposal'],
+                "related_cases_count": len(current_state['retrieved_cases_metadata'])
+            })
+
+        except Exception as e:
+            st.error(f"'조항 {i+1}' 분석 중 오류: {e}")
+            results.append({
+                "original_clause": chunk,
+                "unfair_type": "오류",
+                "improvement_proposal": f"분석 중 오류 발생: {e}",
+                "related_cases_count": 0
+            })
+        
+        # 프로그레스 바 업데이트
+        progress_bar.progress((i + 1) / len(chunks), text=f"분석 진행 중... ({i+1}/{len(chunks)})")
+
+    progress_bar.empty()
+    st.success("모든 조항 분석 완료!")
+    
+    # 4. 결과 리포트 표시
+    display_batch_results(results)
+
+def display_batch_results(results: List[dict]):
+    """
+    일괄 분석 결과를 Streamlit UI에 리포트 형식으로 표시합니다.
+    """
+    
+    # '8. 기타 불공정 약관' 대신 '공정'을 기준으로 필터링
+    problematic_clauses = [
+        r for r in results 
+        if r['unfair_type'] not in ["공정", "오류"]
+    ]
+    
+    st.header(f"검토 결과: 총 {len(results)}개 조항 중 {len(problematic_clauses)}개의 불공정 의심 조항 발견")
+    
+    for i, res in enumerate(problematic_clauses):
+        with st.expander(f"의심 조항 {i+1}: ({res['unfair_type']}) - {res['original_clause'][:50]}..."):
+            
+            # st.markdown()을 사용하여 Markdown 서식을 그대로 렌더링
+            st.markdown(res['improvement_proposal'], unsafe_allow_html=True)
+            
 @st.cache_resource
 def get_app_and_vectorstore():
     vectorstore = load_vectordb()
@@ -461,7 +729,7 @@ def get_app_and_vectorstore():
     checkpointer = MemorySaver()
     app = graph.compile(checkpointer=checkpointer)
     
-    return app
+    return app, vectorstore
 
 def main_chatbot_ui():
     st.set_page_config(page_title="법률 약관 검토 챗봇", layout="wide")
@@ -480,14 +748,23 @@ def main_chatbot_ui():
         current_threshold_value = similarity_threshold_percent / 100.0
         st.caption(f"현재 설정: {similarity_threshold_percent}% 이상")
         st.divider()
-
+        
     try:
-        app = get_app_and_vectorstore()
+        app, vectorstore = get_app_and_vectorstore()
     except Exception as e:
         st.error(f"애플리케이션 로드 실패: {e}")
         st.error("Chroma DB 파일('./chroma_db')이 올바르게 위치해 있는지 확인하세요.")
         return
+        
+    tab1, tab2 = st.tabs(["💬 챗봇 (단일 조항 검토)", "📄 PDF (전체 문서 검토)"])
+    
+    with tab1:
+        run_chatbot_mode(app, current_threshold_value)
+    
+    with tab2:
+        run_pdf_batch_mode(app, vectorstore, current_threshold_value)
 
+def run_chatbot_mode(app, current_threshold_value):
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "thread_id" not in st.session_state:
@@ -506,10 +783,9 @@ def main_chatbot_ui():
     if st.session_state.hitl_pending:
         current_iteration = st.session_state.current_state.get('iteration', 1)
         used_threshold = st.session_state.current_state.get('similarity_threshold', SIMILARITY_THRESHOLD)
-        st.info(f"개선안 (반복 {current_iteration}/{MAX_ITERATIONS})에 대한 피드백을 주세요.")
-
+        
         if SHOW_RETRIEVED_CASES:
-            with st.expander("참고한 유사 사례 보기", expanded=True):
+            with st.expander("참고한 유사 사례 보기", expanded=False):
                 cases = st.session_state.current_state.get('retrieved_cases_metadata', [])
                 
                 if cases:
@@ -546,6 +822,8 @@ def main_chatbot_ui():
                         st.divider()
                 else:
                     st.warning("검색된 사례가 없습니다.")
+        
+        st.info(f"개선안 (반복 {current_iteration}/{MAX_ITERATIONS})에 대한 피드백을 주세요.")
 
         col1, col2 = st.columns(2)
         with col1:
@@ -714,6 +992,28 @@ def main_chatbot_ui():
                         st.session_state.hitl_pending = False
                         st.session_state.current_state = {}
 
+def run_pdf_batch_mode(app, vectorstore, current_threshold_value):
+    st.header("PDF 약관 전체 검토")
+    st.info("PDF 파일을 업로드하면 문서 전체를 분석하여 '불공정 의심 조항' 목록을 생성합니다.")
+
+    uploaded_file = st.file_uploader(
+        "📄 검토할 PDF 약관 파일을 업로드하세요.", 
+        type="pdf",
+        key="pdf_uploader" # key를 추가하여 탭 전환 시 파일이 유지되도록 함
+    )
+    
+    if uploaded_file is not None:
+        # 1. PDF 텍스트 추출
+        pdf_text = extract_text_from_pdf(uploaded_file)
+        
+        # 2. 텍스트 분할 (Chunking)
+        chunks = split_text_into_clauses(pdf_text)
+        
+        st.markdown(f"총 {len(chunks)}개의 조항(Chunk)이 감지되었습니다.")
+        
+        if st.button("전체 조항 분석 시작하기", type="primary", key="batch_start_btn"):
+            # 3. vectorstore를 run_batch_analysis로 전달
+            run_batch_analysis(app, chunks, current_threshold_value, vectorstore)
 
 if __name__ == "__main__":
     main_chatbot_ui()
