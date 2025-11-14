@@ -68,10 +68,26 @@ def build_vectordb():
         loader = PyPDFLoader(pdf_file)
         docs = loader.load()
         
+        # splitter = RecursiveCharacterTextSplitter(
+        #     chunk_size=250,
+        #     chunk_overlap=50
+        # )
         splitter = RecursiveCharacterTextSplitter(
-            chunk_size=250,
-            chunk_overlap=50
+            # '제N조' 단위로 잘라도 1000자를 넘는 긴 조항을 대비한 2차 안전망
+            chunk_size=1000, 
+            chunk_overlap=150,
+            
+            # 분리 기준(separators)을 법률 구조에 맞게 지정
+            # "제N조", "①" 같은 패턴을 우선 분리 기준으로 삼음
+            separators=[
+                "\n\n제",  # "제N조" (가장 큰 단위)
+                "\n\n",   # 문단
+                "\n",     # 줄바꿈
+                " ",
+                ""
+            ]
         )
+        
         chunks = splitter.split_documents(docs)
         
         for chunk in chunks:
@@ -87,7 +103,7 @@ def build_vectordb():
     print(f"법령 처리 완료: {len(documents)}개 청크\n")
     
     print("불공정 사례 처리 중...")
-    df = pd.read_csv('1028ver2.csv', encoding='utf-8')
+    df = pd.read_csv('kftc_unfair_terms_cases.csv', encoding='utf-8')  # 불공정 사례 115개 11/13
     print(f"총 사례 수: {len(df)}\n")
     
     print("=" * 60)
@@ -140,10 +156,11 @@ def build_vectordb():
             page_content = f"약관: {term_text}\n\n결론: {conclusion_text}"
             
             explanation = row.get('시정 요청 설명', '')
-            case_type = row.get('유형', '')
+            case_type = row.get('대분류', '')  # 유형에서 현재 컬럼에 맞게 대분류로 변경   11/13
             related_law = row.get('관련법(약관법)', '')
             ref_law = row.get('참고 법', '')
             ref_explanation = row.get('참고 법 설명', '')
+            fairness = row.get('공정여부', '')  # 공정여부 추가 11/13
             
             metadata = {
                 'source_type': 'case',
@@ -151,6 +168,7 @@ def build_vectordb():
                 'date': date_str,
                 'date_timestamp': timestamp,
                 'case_type': case_type if not pd.isna(case_type) else '',
+                'fairness': fairness if not pd.isna(fairness) else "",  # 공정여부 추가 11/13
                 'explanation': explanation if not pd.isna(explanation) else '',
                 'conclusion': conclusion_text,
                 'related_law': related_law if not pd.isna(related_law) else '',
@@ -178,7 +196,8 @@ def build_vectordb():
         documents=documents,
         embedding=embeddings,
         persist_directory="./chroma_db",
-        collection_name="contract_laws"
+        collection_name="contract_laws",
+        collection_metadata={"hnsw:space": "cosine"}
     )
     
     config_data = {
