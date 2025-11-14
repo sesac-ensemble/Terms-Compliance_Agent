@@ -57,13 +57,9 @@ def classify_fairness(clause: str, langsmith_project: str) -> str:
         tags=["fairness_classification", "batch_test"]
     ):
         result = llm.invoke(prompt).content.strip()
-        #print(f"classify_fairness result:{result}")
-        #print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         
         # 첫 줄만 추출
         result = result.split('\n')[0].strip()
-        #print(f"22222 classify_fairness result:{result}")
-        #print("22222222222222222222222222222222222222222!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         # '공정' 또는 '불공정'만 추출
         if '공정' in result and '불공정' not in result:
             return '공정'
@@ -76,11 +72,7 @@ def classify_fairness(clause: str, langsmith_project: str) -> str:
 def classify_unfair_type(clause: str, fairness: str, langsmith_project: str) -> str:
     # fairness가 부연 설명 포함한 경우 첫 줄만 추출
     fairness_line = fairness.split('\n')[0].strip()
-    
-    # print("*************  1 fairness_line ")
-    # print(f"fairness_line: {fairness_line}")
-    # print("************* 1  fairness_line ")
-    
+        
     if '공정' in fairness_line and '불공정' not in fairness_line:
         return "N/A"
     
@@ -91,11 +83,7 @@ def classify_unfair_type(clause: str, fairness: str, langsmith_project: str) -> 
         tags=["unfair_type_classification", "batch_test"]
     ):
         result = llm.invoke(prompt).content.strip()
-        
-        # print("2222222222222222")
-        # print(f"result: {result}")
-        # print("2222222222222222")
-        
+                
         # 여러 유형이 출력된 경우 첫 번째만 추출
         # 패턴: "불공정(숫자. 유형명)"을 찾아서 첫 번째만 반환
         import re
@@ -103,17 +91,9 @@ def classify_unfair_type(clause: str, fairness: str, langsmith_project: str) -> 
         matches = re.findall(pattern, result)
         
         if matches:
-            print("33333333333333333333333")
-            print(f"matches[0]: {matches[0]}")
-            print("33333333333333333333333")
             return matches[0]  # 첫 번째 유형만 반환
         
         # 패턴이 없으면 첫 줄만 반환
-        
-        # print("44444444444444")
-        # print(result.split('\n')[0].strip())
-        # # print(f"result.split('\n')[0].strip(): {result.split('\n')[0].strip()}")
-        # print("44444444444444444")
         return result.split('\n')[0].strip()
 
 
@@ -188,9 +168,6 @@ def batch_process_test_data(csv_file: str, output_file: str = 'batch_test_result
                 "ground_truth_improvement": safe_get_value(row, 'ground_truth_improvement', default="N/A")
             }
             fairness = classify_fairness(cleaned, langsmith_project)
-            ####
-            print("**********")
-            print(f"Index: {idx}, fairness: {fairness!r}")
             if fairness == '공정':
                 unfair_type = "N/A"   
                 improvement = None
@@ -198,14 +175,10 @@ def batch_process_test_data(csv_file: str, output_file: str = 'batch_test_result
                 laws = []             
             else:
                 unfair_type = classify_unfair_type(cleaned, fairness, langsmith_project)
-                print(f"unfair_type: {unfair_type} *****************")
                 cases, laws = retrieve_cases_and_laws(vectorstore, cleaned, unfair_type)
                 improvement = generate_improvement_proposal(cleaned, unfair_type, cases, laws, langsmith_project)
-                
-                
-###                
-            print(f"Index: {idx}, cases count: {len(cases)}, laws count: {len(laws)}")
-            print("**********")
+                   
+            # print(f"Index: {idx}, cases count: {len(cases)}, laws count: {len(laws)}")
     
             result = {
                 "timestamp": datetime.now().isoformat(),
