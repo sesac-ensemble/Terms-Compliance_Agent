@@ -78,8 +78,6 @@ def evaluate_classification(langsmith_project: str, eval_file='batch_test_result
     print(f"\nOverall Accuracy: {acc:.4f}\n")
     # -------------------------------------------
     
-    # print(classification_report(y_true_fairness, y_pred_fairness))
-    
     # ---  2. 혼동 행렬 (1) - 숫자 (Counts) ---
     cm_fairness_counts = confusion_matrix(y_true_fairness, y_pred_fairness, labels=['공정', '불공정'])
     plt.figure(figsize=(8, 6))
@@ -92,7 +90,7 @@ def evaluate_classification(langsmith_project: str, eval_file='batch_test_result
     plt.savefig('fairness_confusion_matrix_counts.png', dpi=300)
     print("\n✓ 저장: fairness_confusion_matrix_counts.png")
     plt.close() # [수정] 그래프 창 닫기
-    
+ 
     # ---  3. 혼동 행렬 (2) - 확률 (Normalized) ---
     cm_fairness_normalized = confusion_matrix(
         y_true_fairness, 
@@ -123,16 +121,23 @@ def evaluate_classification(langsmith_project: str, eval_file='batch_test_result
     
     print(f"불공정 데이터: {len(df_unfair)}개\n")
     
+    # # 1. 유형 영문 매핑
+    # label_mapping = {
+    #     "1. 서비스 일방적 변경·중단": "1. Unilateral Change/Discontinuation of Service",
+    #     "2. 기한의 이익 상실": "2. Loss of Benefit of Term",
+    #     "3. 고객 권리 제한": "3. Restriction of Customer Rights",
+    #     "4. 통지·고지 부적절": "4. Improper Notification",
+    #     "5. 계약 해지·변경 사유 포괄적": "5. Broad Reasons for Contract Termination/Change",
+    #     "6. 비용 과다 부과·환급 제한": "6. Excessive Charges/Limited Refund",
+    #     "7. 면책·책임 전가": "7. Exemption/Transfer of Liability",
+    #     "8. 기타 불공정 약관": "8. Other Unfair Clauses"
+    # }
     # 1. 유형 영문 매핑
     label_mapping = {
-        "1. 서비스 일방적 변경·중단": "1. Unilateral Change/Discontinuation of Service",
-        "2. 기한의 이익 상실": "2. Loss of Benefit of Term",
-        "3. 고객 권리 제한": "3. Restriction of Customer Rights",
-        "4. 통지·고지 부적절": "4. Improper Notification",
-        "5. 계약 해지·변경 사유 포괄적": "5. Broad Reasons for Contract Termination/Change",
-        "6. 비용 과다 부과·환급 제한": "6. Excessive Charges/Limited Refund",
-        "7. 면책·책임 전가": "7. Exemption/Transfer of Liability",
-        "8. 기타 불공정 약관": "8. Other Unfair Clauses"
+        "1. 계약 변경 및 해지": "1. Contract Change & Termination",
+        "2. 고객 권리 및 책임": "2. Customer Rights & Responsibilities",
+        "3. 금전 및 비용": "3. Monetary & Cost Issues",
+        "4. 통지 및 기타 절차": "4. Notification & Other Procedures"
     }
 
     # 2. predicted_type에서 괄호 안 내용 추출 함수
@@ -150,16 +155,23 @@ def evaluate_classification(langsmith_project: str, eval_file='batch_test_result
     y_true_type = df_unfair['ground_truth_type']
     y_pred_type = df_unfair['predicted_type'].apply(extract_type)
 
-    # 4. 영문 라벨 리스트 준비(고정 8종)
+    # # 4. 영문 라벨 리스트 준비(고정 8종)
+    # labels_kr = [
+    #     "1. 서비스 일방적 변경·중단",
+    #     "2. 기한의 이익 상실",
+    #     "3. 고객 권리 제한",
+    #     "4. 통지·고지 부적절",
+    #     "5. 계약 해지·변경 사유 포괄적",
+    #     "6. 비용 과다 부과·환급 제한",
+    #     "7. 면책·책임 전가",
+    #     "8. 기타 불공정 약관"
+    # ]
+    # 4. 영문 라벨 리스트 준비(고정 4종)
     labels_kr = [
-        "1. 서비스 일방적 변경·중단",
-        "2. 기한의 이익 상실",
-        "3. 고객 권리 제한",
-        "4. 통지·고지 부적절",
-        "5. 계약 해지·변경 사유 포괄적",
-        "6. 비용 과다 부과·환급 제한",
-        "7. 면책·책임 전가",
-        "8. 기타 불공정 약관"
+        "1. 계약 변경 및 해지",
+        "2. 고객 권리 및 책임",
+        "3. 금전 및 비용",
+        "4. 통지 및 기타 절차"
     ]
     labels_en = [label_mapping[k] for k in labels_kr]
 
@@ -181,7 +193,7 @@ def evaluate_classification(langsmith_project: str, eval_file='batch_test_result
     print(df_report_type.to_markdown(floatfmt=".4f"))
 
     acc_type = accuracy_score(y_true_type_en, y_pred_type_en)
-    print(f"\nOverall Unfair Type Accuracy (8종 기준): {acc_type:.4f}\n")
+    print(f"\nOverall Unfair Type Accuracy ({len(labels_en)}종 기준): {acc_type:.4f}\n")
     # ------------------------------------------------
 
     # --- [수정] 2. 혼동 행렬 (1) - 숫자 (Counts) ---
@@ -228,7 +240,7 @@ def evaluate_classification(langsmith_project: str, eval_file='batch_test_result
         print("=" * 60)
         return # 함수를 여기서 종료합니다.
     # ---
-    
+
     print("=" * 60)
     print("3단계: 개선안 실효성 평가 (LLM Judge)")
     print("=" * 60)

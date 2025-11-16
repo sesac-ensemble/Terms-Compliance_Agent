@@ -81,19 +81,18 @@ def classify_fairness(clause: str, langsmith_project: str, enable_tracing: bool 
     2. 3회 모두 CONFIDENCE_THRESHOLD(0.8) 미만이면, "신뢰도 점수 총합"으로 결정 (Fallback)
     """
     
-    # 'results_history'와 'score_sums'는 이 노드에서 새로 시작
     results_history = [] 
     score_sums = {'공정': 0.0, '불공정': 0.0} 
-    
-    # [수정] 트래킹 활성화 여부에 따라 컨텍스트 분기
-    tracer = tracing_v2_enabled(
-        project_name=langsmith_project,
-        tags=["fairness_classification", "batch_test"]
-    ) if enable_tracing else contextlib.nullcontext()
-    
+
     print(f"\n[노드2] 공정/불공정 분류 시작 (최대 {FAIRNESS_MAX_ITERATIONS}회)\n")
 
     for iteration in range(1, FAIRNESS_MAX_ITERATIONS + 1):
+        # 트래킹 활성화 여부에 따라 컨텍스트 분기
+        tracer = tracing_v2_enabled(
+            project_name=langsmith_project,
+            tags=["fairness_classification", "batch_test"]
+        ) if enable_tracing else contextlib.nullcontext()
+        
         # 인자로 받은 'clause'를 프롬프트에 사용
         prompt = ACTIVE_FAIRNESS_CLASSIFY_PROMPT.format(cleaned_text=clause)
 
@@ -267,7 +266,7 @@ def generate_improvement_proposal(clause: str, unfair_type: str, cases: List[Dic
 
 def batch_process_test_data(
     csv_file: str, 
-    output_file: str = 'batch_test_results_251116.jsonl', 
+    output_file: str = 'batch_test_results.jsonl', 
     # error_file: str = 'batch_test_errors_251116.jsonl', # [수정] 오류 파일 경로 추가
     langsmith_project: str = "contract-review-batch",
     enable_tracing: bool = True, # [수정] 트래킹 플래그 추가
@@ -395,8 +394,8 @@ def batch_process_test_data(
             results.append(result)
             
             # 1. 전체 결과 파일에 쓰기
-            # with open(output_file, 'a', encoding='utf-8') as f:
-            #     f.write(json.dumps(result, ensure_ascii=False) + '\n')
+            with open(output_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(result, ensure_ascii=False) + '\n')
                 
             # 2. 틀린 경우, 오류 파일에 따로 쓰기
             # if not is_correct_overall:
