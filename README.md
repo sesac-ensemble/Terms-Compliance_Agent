@@ -31,6 +31,7 @@ LANGSMITH_TRACING=true
 LANGSMITH_PROJECT=project_name
 ```
 
+```
 ## 폴더 구조
 /
 ├── .env                    # 환경 변수 파일 (로컬 전용)
@@ -64,3 +65,4 @@ LANGSMITH_PROJECT=project_name
 │   └── kftc_unfair_terms_cases.csv # 불공정 사례 데이터셋
 │
 └── (chroma_db/)
+```
