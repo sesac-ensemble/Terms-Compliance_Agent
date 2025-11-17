@@ -256,6 +256,7 @@ def run_chatbot_mode(app, current_threshold_value):
 def main_chatbot_ui():
     st.set_page_config(page_title="약관 검토 챗봇", layout="wide")
     st.title("약관 검토 챗봇")
+    st.caption("본 분석은 법적 효력을 가지지 않으며, 법률 자문을 대체하지 않습니다. 중대한 법적 판단은 반드시 자격 있는 법률 전문가와의 상담을 통해 이루어져야 합니다.")
     
     with st.sidebar:
         st.header("검색 설정")
