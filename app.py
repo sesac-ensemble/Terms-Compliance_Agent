@@ -19,6 +19,17 @@ def run_chatbot_mode(app, current_threshold_value):
         st.session_state.current_state = {}
     if "pending_feedback" not in st.session_state:
         st.session_state.pending_feedback = None
+    if not st.session_state.messages:
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": """### 안녕하세요, 법률 약관 검토 챗봇입니다👋\n
+새로운 약관 조항의 공정성 검토를 도와드리겠습니다. 분석을 원하는 **약관 조항**만 아래 채팅창에 입력해 주세요.
+            
+        [입력 예시]
+        회원이 본 카드의 발급 목적과 다르게 이용한다고 카드사가 판단하거나, 
+        기타 이에 준하는 중대한 사유가 발생하여 계약 유지가 곤란하다고 인정되는 경우, 카드사는 본 계약을 해지할 수 있습니다.
+        """
+        })
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
@@ -271,7 +282,15 @@ def main_chatbot_ui():
         current_threshold_value = similarity_threshold_percent / 100.0
         st.caption(f"현재 설정: {similarity_threshold_percent}% 이상")
         st.divider()
-
+        st.subheader("정보")
+        st.markdown(
+            """
+            * **모델:** Solar-Pro2
+            * **버전:** 약관 분석 모듈 v1.0
+            * **최근 업데이트:** 2025.11
+            * **성능 범위:** 불공정 여부 판단, 유사 사례/법령 검색, 개선안 생성
+            """
+        )
     
     # 모듈화된 load_app_safe 호출
     app, vectorstore = load_app_safe()
