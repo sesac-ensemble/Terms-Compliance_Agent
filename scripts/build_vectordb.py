@@ -40,6 +40,7 @@ def build_vectordb():
     ]
     
     for pdf_file in pdf_files:
+        file_path = os.path.join(DATA_DIR, pdf_file)
         # if not os.path.exists(pdf_file):
         if not os.path.exists(file_path): # (수정)
             print(f"경고: {pdf_file}을(를) 찾을 수 없습니다")
@@ -180,7 +181,7 @@ def build_vectordb():
     vectorstore = Chroma.from_documents(
         documents=documents,
         embedding=embeddings,
-        persist_directory="./chroma_db",
+        persist_directory=os.path.join(BASE_DIR, "chroma_db"),
         collection_name="contract_laws",
         collection_metadata={"hnsw:space": "cosine"}
     )
