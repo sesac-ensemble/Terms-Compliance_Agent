@@ -185,8 +185,7 @@ def retrieve_node(state: ContractState, vectorstore: Chroma):
     final_cases_meta = filtered_cases_meta[:MAX_DISPLAY_CASES]
     
     # 2. 법령 검색
-    law_query = " ".join([c['related_law'] for c in final_cases_meta if c['related_law']])
-    if not law_query: law_query = search_query
+    law_query = search_query
         
     results_laws_with_scores = vectorstore.similarity_search_with_relevance_scores(
         law_query, 
@@ -203,23 +202,71 @@ def retrieve_node(state: ContractState, vectorstore: Chroma):
                 "metadata": doc.metadata
             })
     final_laws_meta = final_laws_meta[:MAX_DISPLAY_LAWS]
+    
     # 3. LLM 프롬프트용 텍스트 생성
-    retrieved_text = f"[유사 시정 사례] ({len(final_cases_meta)}건, 임계점: {current_threshold:.0%})\n"
-    
-    for c in final_cases_meta:
-        retrieved_text += f"\n- 사례{c['index']} (유사도 {c['similarity']:.1%}): {c['content']}\n"
-        if c['related_law']:
-            retrieved_text += f"  (관련법: {c['related_law']})\n"
-    
+    # 3a. LLM에 전달할 '가장 최신 사례' 1건 찾기
+    latest_case = None
+    if final_cases_meta:
+        try:
+            # 'date' (YYYY-MM-DD 형식)를 기준으로 최신 날짜의 사례를 찾습니다.
+            latest_case = max(
+                (c for c in final_cases_meta if c.get('date', '0000-00-00') != 'N/A'), 
+                key=lambda x: x.get('date', '0000-00-00'),
+                default=None
+            )
+        except Exception:
+            # 날짜 비교 중 오류 발생 시, 그냥 첫 번째 사례를 사용 (안전장치)
+            latest_case = final_cases_meta[0]
+        
+    # 3b. LLM 프롬프트용 텍스트(retrieved_text) 생성
+    if latest_case:
+        # LLM에는 최신 사례 1건만 전달
+        retrieved_text = f"[유사 시정 사례]"
+        
+        # --- [최종 수정: 모든 정보 제공하되 명확한 라벨링] ---
+        case_summary_parts = []
+        
+        explanation = str(latest_case.get('explanation', '')).strip()
+        conclusion = str(latest_case.get('conclusion', '')).strip()
+        content = str(latest_case.get('content', '')).strip() # 약관 조항 원문
+        
+        # 1. 불공정 약관 조항 (문맥 파악용 - 나쁜 예시임을 명시)
+        if content:
+             case_summary_parts.append(f"  * [불공정 약관 조항 (참고용)]: {content}")
+        
+        # 2. 시정 요청 사유 (법적 논리)
+        if explanation:
+             case_summary_parts.append(f"  * [시정 요청 사유 (위법 사유)]: {explanation}")
+                 
+        # 3. 심사 결론 (수정 가이드)
+        if conclusion:
+             case_summary_parts.append(f"  * [심사 결론 (수정 방향)]: {conclusion}")
+            
+        # 리스트에 담긴 내용을 줄바꿈으로 합치기
+        final_summary = "\n".join(case_summary_parts)
+        
+        retrieved_text += f"\n- 사례{latest_case['index']} (유사도 {latest_case['similarity']:.1%}):\n{final_summary}\n"
+        
+        if latest_case['related_law']:
+            retrieved_text += f"  (관련법: {latest_case['related_law']})\n"
+            
+    else:
+        # 검색된 사례가 없으면 0건으로 표시
+        retrieved_text = f"[유사 시정 사례] (0건)\n"
+
     retrieved_text += f"\n[관련 법령] ({len(final_laws_meta)}건)\n"
     for l in final_laws_meta:
         retrieved_text += f"- 법령{l['index']} (유사도 {l['similarity']:.1%}): {l['content']}\n"
-
+    
+    print("\n" + "="*60)
+    print(f"[DEBUG] AI에게 전달되는 참고 자료(retrieved_text):\n{retrieved_text}")
+    print("="*60 + "\n")
+    
     return {
         "related_cases": retrieved_text,
         "retrieved_cases_metadata": final_cases_meta,
         "retrieved_laws_metadata": final_laws_meta
-    }      
+    }
 
     
 def generate_proposal_node(state: ContractState):
