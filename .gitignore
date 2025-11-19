@@ -12,6 +12,8 @@ dist/
 
 # VectorDB (ChromaDB)
 chroma_db/
+vectordb_config.json
+
 
 # Logs
 logs/
