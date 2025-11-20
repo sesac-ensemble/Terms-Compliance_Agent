@@ -1,5 +1,5 @@
 import streamlit as st
-import auth_manager 
+from auth import auth_manager
 from langgraph_components import load_app_safe
 
 from ui_modules.pdf_module import run_pdf_batch_mode
@@ -16,7 +16,7 @@ def get_cached_app():
     return load_app_safe()
 
 def main_chatbot_ui():
-    st.set_page_config(page_title="신용카드 약관 분석 AI", layout="wide")
+    st.set_page_config(page_title="신용카드 약관 분석 AI", layout="wide", initial_sidebar_state="collapsed")
     
     # --- [1] 상태 초기화 ---
     if "show_guide" not in st.session_state:
