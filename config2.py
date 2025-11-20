@@ -30,7 +30,7 @@ CONFIDENCE_THRESHOLD = 0.8    # 공정/불공정 분류 반복 중단 기준 신
 
 
 # --- 벡터DB 검색 설정 (RAG 관련) ---
-SIMILARITY_THRESHOLD = 0.5  # 유사도 임계점 (0.0 ~ 1.0), Streamlit 기본 유사도 임계값 (UI에서 변경 가능)
+SIMILARITY_THRESHOLD = 0.4  # 유사도 임계점 (0.0 ~ 1.0), Streamlit 기본 유사도 임계값 (UI에서 변경 가능)
 SEARCH_TOP_K_CASES = 10     # 초기 검색 개수 (필터링 전)
 SEARCH_TOP_K_LAWS = 10
 MAX_DISPLAY_CASES = 5       # 최종 표시 개수
