@@ -147,7 +147,7 @@ def run_chatbot_mode(app, current_threshold_value):
                     "수정 요청 사유:", 
                     key="modify_reason_input",
                     height=150,
-                    placeholder="예) 위약금 비율을 조금 더 낮춰줘\n예) 해지 사유를 더 구체적으로 명시해줘"
+                    placeholder="예) 위약금 비율을 조금 더 낮춰줘\n예) 해지 사유를 더 구체적으로 명시해줘\n예)2, 3번 참고 법령과 1번 유사 사례의 시정 취지를 반영하여, 입력된 조항의 불공정성을 해소하는 방향으로 다시 작성해"
                 )
 
                 b_col1, b_col2 = st.columns([1, 1])
