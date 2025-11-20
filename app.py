@@ -14,6 +14,7 @@ import auth_manager
 # 모듈화된 설정, 그래프, PDF 모듈 로드
 from config2 import SIMILARITY_THRESHOLD, MAX_ITERATIONS, SHOW_RETRIEVED_CASES
 from langgraph_components import load_app_safe
+from langgraph.types import Command
 from ui_modules import run_pdf_batch_mode
 
 def run_chatbot_mode(app, current_threshold_value):
@@ -158,7 +159,7 @@ def run_chatbot_mode(app, current_threshold_value):
                     "수정 요청 사유:", 
                     key="modify_reason_input",
                     height=150,
-                    placeholder="예) 위약금 비율을 조금 더 낮춰주세요.\n예) 해지 사유를 더 구체적으로 명시해주세요."
+                    placeholder="예) 위약금 비율을 조금 더 낮춰줘\n예) 해지 사유를 더 구체적으로 명시해줘"
                 )
 
                 b_col1, b_col2 = st.columns([1, 1])
@@ -205,18 +206,26 @@ def run_chatbot_mode(app, current_threshold_value):
             with st.chat_message("assistant"):
                 with st.spinner("피드백을 반영하여 처리 중..."):
                     try:
-                        output = app.invoke(feedback_input, config=config)
+                        output = app.invoke(
+                            Command(resume=feedback_input), 
+                            config=config
+                        )
                         st.session_state.current_state = output
                         
-                        last_feedback = output.get('user_feedback', '')
-                        last_retry = output.get('retry_action', '')
+                        # output(결과)이 아닌 feedback_input(입력 의도)을 확인합니다.
+                        # output 상태값이 유실되더라도, 사용자가 누른 버튼 정보는 확실하기 때문
+                        sent_feedback = feedback_input.get('user_feedback', '')
+                        sent_retry = feedback_input.get('retry_action', '')
 
-                        if last_feedback == "approved" or (last_feedback == "rejected" and last_retry == "discard"):
+                        if sent_feedback == "approved" or (sent_feedback == "rejected" and sent_retry == "discard"):
                             st.markdown("### 검토 완료\n검토가 최종 완료되었습니다.")
                             st.session_state.messages.append({
                                 "role": "assistant", 
                                 "content": "검토가 완료되었습니다."
                             })
+                            # 상태 초기화 (중복 실행 방지)
+                            st.session_state.hitl_pending = False
+                            st.session_state.thread_id = None
                             st.rerun()
                         else:
                             st.markdown(f"### 🔄 새로운 개선안 (반복 {output.get('iteration', '?')}/{MAX_ITERATIONS})")
@@ -230,6 +239,7 @@ def run_chatbot_mode(app, current_threshold_value):
 
                     except Exception as e:
                         st.error(f"피드백 처리 중 오류 발생: {e}")
+                        print(f"Error details: {traceback.format_exc()}") # 자세한 에러 로그 출력
                         st.session_state.hitl_pending = False
                         st.session_state.thread_id = None
 
@@ -245,6 +255,10 @@ def run_chatbot_mode(app, current_threshold_value):
                         st.session_state.thread_id = f"session_{datetime.now().timestamp()}"
                         config = {"configurable": {"thread_id": st.session_state.thread_id}}
                         
+                        # log를 위한 로그인 정보 가져오기 (없으면 unknown 처리)
+                        user_email = st.session_state.get("username", "unknown")
+                        user_name = st.session_state.get("name", "unknown")
+                        
                         initial_state = {
                             "clause": prompt,
                             "iteration": 1,
@@ -252,7 +266,9 @@ def run_chatbot_mode(app, current_threshold_value):
                             "validation_failed": False,
                             "retrieved_cases_metadata": [],
                             "retrieved_laws_metadata": [],
-                            "similarity_threshold": current_threshold_value
+                            "similarity_threshold": current_threshold_value,
+                            "user_email": user_email,
+                            "user_name": user_name
                         }
                         
                         # with tracing_v2_enabled():
@@ -297,87 +313,178 @@ def run_chatbot_mode(app, current_threshold_value):
                         st.session_state.hitl_pending = False
 
 def draw_user_guide():
-    st.title("약관 검토 챗봇 가이드")
-    st.markdown("법무팀의 약관 제정 및 검토 업무를 보조하는 시스템 사용법입니다.")
+    st.title("사용 가이드 및 지원 범위")
+    st.markdown("#### AI와 함께하는 약관 심사, 이렇게 진행하세요.")
     
-    st.divider()
+    st.write("") # 여백
+
+    # 1. 탭을 사용하여 정보 구조화
+    tab1, tab2 = st.tabs(["이용 절차 (Workflow)", "지원 범위"])
     
-    st.subheader("📌 업무 프로세스 (Workflow)")
-    # Graphviz로 흐름도 그리기
-    graph = graphviz.Digraph()
-    graph.attr(rankdir='LR', size='10,3') 
-    graph.attr('node', shape='box', style='filled', fillcolor='#e8f4f8', fontname='Malgun Gothic')
-    
-    graph.node('1', '1. 조항/파일 입력')
-    graph.node('2', '2. AI 법률 분석\n(공정성/유사사례)')
-    graph.node('3', '3. 개선안 생성')
-    graph.node('4', '4. 수정 및 확정\n(Human Check)')
-    
-    graph.edge('1', '2')
-    graph.edge('2', '3')
-    graph.edge('3', '4', label=' 피드백')
-    
-    st.graphviz_chart(graph)
-    
-    st.write("")
-    
-    st.info("""
-    **💡 팁 (Tip)**
-    * **수정 요청:** AI 제안이 마음에 안 들면 "좀 더 부드럽게 써줘"라고 채팅하듯 요청하세요.
-    * **임계값 조절:** 왼쪽 사이드바의 '유사도'를 낮추면 더 많은 참고 사례가 나옵니다.
-    """)
+    # --- [탭 1] 이용 절차 (시각화 중심) ---
+    with tab1:
+        st.subheader("1. 업무 흐름도")
+        st.caption("입력부터 최종 확정까지 4단계로 진행됩니다.")
+
+        # Graphviz를 이용한 깔끔한 프로세스 다이어그램
+        graph = graphviz.Digraph()
+        graph.attr(rankdir='LR', size='12,4') # 가로 방향
+        graph.attr('node', shape='rect', style='filled', 
+                   fillcolor='#f0f2f6', fontname='Malgun Gothic', 
+                   fontsize='14', margin='0.2')
+        graph.attr('edge', fontsize='12')
+
+        # 노드 정의
+        graph.node('Input', '1. 조항 입력\n(검토 요청)', fillcolor='#e3f2fd') # 강조색
+        graph.node('AI', '2. AI 정밀 진단\n(불공정/유사사례)')
+        graph.node('Draft', '3. 개선안 제안\n(Redline)')
+        graph.node('Human', '4. 전문가 검토\n(수락/수정/폐기)', fillcolor='#fff3e0') # 강조색
+
+        # 엣지(화살표) 연결
+        graph.edge('Input', 'AI')
+        graph.edge('AI', 'Draft')
+        graph.edge('Draft', 'Human', label=' 제안 확인')
+        graph.edge('Human', 'Draft', label=' 💬 수정 요청\n(Feedback)', style='dashed', color='red')
+        graph.edge('Human', 'Human', label=' ✅ 최종 확정', color='green')
+
+        st.graphviz_chart(graph)
+        
+        st.divider()
+
+        # 꿀팁 섹션
+        col1, col2 = st.columns(2)
+        with col1:
+            st.info("💡 **수정 요청(Feedback) 꿀팁**")
+            st.markdown("""
+            AI의 제안이 마음에 들지 않으면 채팅하듯 편하게 명령하세요.
+            - *"위약금을 5%로 낮춰줘"*
+            - *"문구를 좀 더 부드럽게 다듬어줘"*
+            - *"법적 근거를 더 보강해줘"*
+            """)
+            st.caption("법적 근거를 해치지 않는 선에서 적용됩니다.")
+        with col2:
+            st.success("✨ **검토 완료 기준**")
+            st.markdown("""
+            - **[피드백]** 버튼을 눌러야 해당 조항 검토가 완료됩니다.
+            - 완료된 내용은 자동으로 로그에 저장됩니다.
+            """)
+
+    # --- [탭 2] 분석 범위 (카드 UI 중심) ---
+    with tab2:
+        st.subheader("AI가 할 수 있는 것 vs 없는 것")
+        st.markdown("본 시스템은 **'개별 조항(Clause)' 단위의 공정성 심사**에 특화되어 있습니다.")
+        
+        st.write("") 
+
+        # 3단 컬럼으로 O/X 명확히 구분
+        c1, c2, c3 = st.columns(3)
+        
+        with c1:
+            st.container(border=True)
+            st.success("✅ 문장/표현 레벨")
+            st.markdown("""
+            **[지원 기능]**
+            - **오타 및 비문** 교정
+            - **모호한 표현** 감지
+            - **독소 조항** 키워드 식별
+            """)
+            
+        with c2:
+            st.container(border=True)
+            st.info("✅ 법적 효력 레벨")
+            st.markdown("""
+            **[핵심 기능]**
+            - **불공정 유형(8개)** 판별
+            - **관련 법령** 매칭
+            - **유사 심결례** 비교 검색
+            """)
+            
+        with c3:
+            st.container(border=True)
+            st.warning("⚠️ 문서 구조 레벨")
+            st.markdown("""
+            **[지원 제한]**
+            - **문서 서식/디자인**
+            """)
+            
+        st.divider()
+        st.caption("※ AI의 분석 결과는 법적 효력을 갖지 않으며, 최종 판단 책임은 담당자에게 있습니다.")
 
 def draw_analysis_scope():
-    st.title("데이터 구조 / 판단 기준 보기")
-    st.markdown("본 시스템은 **개별 조항의 법적 유효성 및 공정성 심사**에 최적화되어 있습니다.")
-    
-    st.divider()
+    st.header("데이터 구조")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.success("✅ 문장/표현 단위")
-        st.markdown("""
-        **[지원함]**
-        - 모호한 표현 감지
-        - 독소 조항 문구 식별
-        - 오타 및 비문 교정
-        """)
-        st.caption("문장 내의 논리적 오류나 불명확한 표현을 찾아냅니다.")
+        with st.container(border=True):
+            st.subheader("참고하는 데이터-링크 추가")
+            st.caption("최신 데이터를 참고하였습니다.")
+            st.markdown("""
+            - 약관법
+            - 약관심사지침
+            - 금융소비자법 시행령
+            - 금융소비자 보호에 관한 감독 규정
+            - 공정위에서 발표한 불공정 약관 시정 사례
+            """)
         
     with col2:
-        st.success("✅ 조항(Clause) 단위")
-        st.markdown("""
-        **[핵심 기능]**
-        - **불공정 유형(8대) 판별**
-        - 관련 법령 매칭
-        - 유사 시정 사례 검색
-        """)
-        st.caption("제N조 단위의 공정성 여부를 가장 정확하게 분석합니다.")
+        with st.container(border=True):
+            st.subheader("데이터 구조")
+            st.markdown("""
+            
+            """)
         
     with col3:
-        st.warning("⚠️ 전체 구조(Context)")
-        st.markdown("""
-        **[제한적 지원]**
-        - 조항 간 충돌 여부 (X)
-        - 문서 전체의 통일성 (△)
-        - 누락된 필수 조항 체크 (△)
-        """)
-        st.caption("PDF 검토 시에도 '조항 단위'로 쪼개서 분석하며, 조항끼리의 유기적 연결성은 완벽히 파악하지 못할 수 있습니다.")
+        with st.container(border=True):
+            st.subheader("데이터 어쩌구")
+            st.markdown("""
+            
+            """)
 
     st.divider()
     
-    st.subheader("ℹ️ 상세 지원 내역")
-    st.markdown("""
-    | 구분 | 기능 | 지원 여부 | 비고 |
-    | :--- | :--- | :---: | :--- |
-    | **단일 조항** | 불공정성 심사 | ✅ | 가장 높은 정확도 |
-    | **단일 조항** | 법령/판례 근거 | ✅ | RAG 기술 활용 |
-    | **단일 조항** | 수정안 제안 | ✅ | Generate Model 활용 |
-    | **전체 문서** | 일괄 검토 (Batch) | ✅ | PDF 업로드 시 조항별 순차 분석 |
-    | **전체 문서** | 상호 모순 체크 | ❌ | 예: 제3조와 제15조의 충돌 여부 미지원 |
-    | **전체 문서** | 양식/포맷팅 | ❌ | 들여쓰기, 글자 크기 등은 분석 제외 |
-    """)
+    st.header("판단 기준 보기")
+    
+    col4, col5 = st.columns(2)
+    
+    with col4: 
+        st.subheader("법령 검색 방법")
+        st.markdown("""
+        1. 사용자의 질문과 가상 유사한 법령 5개 검색
+        2. 유사한 사례 5개 중, 유사도가 50% 이하는 삭제
+                    """)
+        st.markdown("""
+        | 우선순위 | 법령명 | 메모 |
+        | :--- | :--- | :--- |
+        | **1** | 약관의 규제에 관한 법률 | 특별법, 최우선 적용 |
+        | **2** | 전자금융거래법 | 분야별 개별법 |
+        | **3** | 금융소비자보호에 관한 법률 | 일반법 |
+        | **4** | 금융소비자법 시행령 | 대통령령 (하위 규범) |
+        | **5** | 감독규정 | 금융감독원 내부 규정, 행정규칙 |
+        | **6** | 약관심사지침 | 법률 아님, 법적 효력 없음 (행정해석) |
+        """)
+        st.caption("감독 규정을 쪼갬, 쪼갠 이유:")
+        
+        st.subheader("사례 검색 방법")
+        st.markdown("""
+        1. 사용자의 질문과 가상 유사한 사례 5개 검색
+        2. 유사한 사례 5개 중, 유사도가 50% 이하는 삭제
+        3. 남은 사례 중, 가장 최신 사례 1개만 선택
+                    """)
+
+    with col5:
+        st.subheader("개선안 생성 방법")
+        st.markdown("""
+        1. 검색된 사례 + 법령 + 사용자의 질문을 반영하여 개선안 생성
+                    """)
+        
+@st.cache_resource
+def get_cached_app():
+    """
+    LangGraph 앱과 VectorStore를 캐싱하여
+    Streamlit이 Rerun 되어도 메모리(Checkpoint)가 유지되도록 합니다.
+    """
+    return load_app_safe()
 
 def main_chatbot_ui():
     st.set_page_config(page_title="약관 검토 챗봇", layout="wide")
@@ -443,17 +550,8 @@ def main_chatbot_ui():
                 st.session_state.show_scope = True
                 st.session_state.show_guide = False # 다른 창은 닫음
                 st.rerun()
-        
-        st.write("")
-        st.subheader("정보")
-        st.markdown(
-            """
-            * **모델:** Solar-Pro2
-            * **버전:** 약관 분석 모듈 v1.0
-            * **최근 업데이트:** 2025.11
-            """
-        )
-        st.caption("© 2025 법무지원팀 AI Assistant")
+    
+        st.caption("2025.11 약관 분석 모듈 v1.0")
 
     # ---------------------------------------------------------
     # [메인 화면 영역]

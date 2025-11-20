@@ -399,44 +399,81 @@ def interrupt_for_feedback_node(state: ContractState):
 
     return interrupt(value=state)
 
+# nodes.py
+
+# ... (import 부분은 그대로) ...
+
 def process_feedback_node(state: ContractState):
-    """[노드7] 사용자 피드백 처리 및 저장 (Streamlit에서 재개 시 실행)"""
-    print(f"\n[노드7] 피드백 처리\n")
+    """[노드7] 사용자 피드백 처리 및 저장"""
+    print(f"\n[노드7] 피드백 처리 시작... (Input Feedback: {state.get('user_feedback')})\n")
     
-    feedback = state['user_feedback']
+    # state에서 값 가져오기
+    feedback = state.get('user_feedback', '')
     retry_action = state.get('retry_action', '')
     current_iteration = state.get('iteration', 1)
     
+    # 1. 수락 (Approved)
     if feedback == "approved":
+        print(">> 상태: 수락 (Approved)")
+        # 로그 저장 호출
         save_result(state, "approved", current_iteration, total_iterations=current_iteration)
-        print("[노드7] 결과 저장 완료 (수락)\n")
-        return {"user_feedback": "approved", "retry_action": ""}
-    
-    elif feedback == "rejected":
-        if retry_action == "retry":
-            new_iteration = current_iteration + 1
-            save_result(state, "rejected_retry", current_iteration)
-            print(f"[노드7] 거절 기록 (재시도 예정) -> 반복 {new_iteration}차 진행\n")
-            return {"user_feedback": "rejected", "iteration": new_iteration, "retry_action": "retry"}
-        else:
-            save_result(state, "rejected_discard", current_iteration, total_iterations=current_iteration)
-            print(f"[노드7] 결과 저장 완료 (거절 및 폐기)\n")
-            return {"user_feedback": "rejected", "retry_action": "discard"}
-    
-    elif feedback == "modify":
-        if current_iteration >= MAX_ITERATIONS:
-            save_result(state, "max_iteration_reached", current_iteration, total_iterations=current_iteration, modify_reason="반복 횟수 제한 도달")
-            print(f"[노드7] 반복 횟수 제한 도달\n")
-            return {"user_feedback": "approved", "retry_action": ""} # 강제 수락
         
-        new_iteration = current_iteration + 1
-        save_result(state, "modify_request", current_iteration, modify_reason=state.get('modify_reason', ''))
-        print(f"[노드7] 수정 요청 저장 -> 반복 {new_iteration}차 진행\n")
+        # [핵심] 여기서 반환하는 값이 app.py의 output이 됩니다.
+        # 반드시 user_feedback을 명시하여 app.py가 '완료'로 인식하게 해야 합니다.
         return {
-            "user_feedback": "modify",
-            "iteration": new_iteration,
-            "modify_reason": state.get('modify_reason', ''),
+            "user_feedback": "approved", 
             "retry_action": ""
         }
     
-    return {"user_feedback": feedback, "retry_action": ""}
+    # 2. 거절/폐기 (Rejected)
+    elif feedback == "rejected":
+        # 2-1. 재시도 (Retry) - 현재 로직상 잘 안 쓰임
+        if retry_action == "retry":
+            print(">> 상태: 거절 후 재시도")
+            new_iteration = current_iteration + 1
+            save_result(state, "rejected_retry", current_iteration)
+            return {
+                "user_feedback": "rejected", 
+                "iteration": new_iteration, 
+                "retry_action": "retry"
+            }
+            
+        # 2-2. 폐기 (Discard) - '폐기' 버튼 눌렀을 때
+        else:
+            print(">> 상태: 폐기 (Discard)")
+            save_result(state, "rejected_discard", current_iteration, total_iterations=current_iteration)
+            return {
+                "user_feedback": "rejected", 
+                "retry_action": "discard"
+            }
+    
+    # 3. 수정 요청 (Modify)
+    elif feedback == "modify":
+        print(">> 상태: 수정 요청 (Modify)")
+        
+        # 반복 횟수 초과 체크
+        if current_iteration >= MAX_ITERATIONS:
+            print("   -> 반복 횟수 초과로 강제 수락 처리")
+            save_result(state, "max_iteration_reached", current_iteration, 
+                        total_iterations=current_iteration, 
+                        modify_reason="반복 횟수 제한 도달")
+            return {
+                "user_feedback": "approved", 
+                "retry_action": ""
+            } # 강제 완료
+        
+        # 정상 수정 요청
+        new_iteration = current_iteration + 1
+        reason = state.get('modify_reason', '')
+        save_result(state, "modify_request", current_iteration, modify_reason=reason)
+        
+        return {
+            "user_feedback": "modify",
+            "iteration": new_iteration,
+            "modify_reason": reason,
+            "retry_action": ""
+        }
+    
+    # 예외 처리
+    print(">> 상태: 알 수 없는 피드백")
+    return {"user_feedback": feedback}
