@@ -352,18 +352,8 @@ def generate_proposal_node(state: ContractState):
     
     print("LLM 개선안 생성 완료.\n")
     
-    # 현재 state에서 반복 횟수를 가져옵니다 (없으면 1)
-    current_iteration = state.get("iteration", 1)
-    
-    # feedback_context(수정 사유)가 있을 때만 카운트를 +1 합니다.
-    if feedback_context:
-        next_iteration = current_iteration + 1
-    else:
-        next_iteration = 1  # 첫 생성(초안)인 경우 1 유지
-    
     return {
         "improvement_proposal": final_output,
-        "iteration": next_iteration,
         "user_feedback": None,  # 피드백 처리 완료했으므로 초기화
         "modify_reason": None   # 사유 초기화
     }

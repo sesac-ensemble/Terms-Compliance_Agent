@@ -24,7 +24,7 @@ embeddings = UpstageEmbeddings(model=EMBEDDING_MODEL)
 
 
 # --- 상수 ---
-MAX_ITERATIONS = 3 # HITL(수정 요청) 최대 반복 횟수
+MAX_ITERATIONS = 4 # HITL(수정 요청) 최대 반복 횟수 # 4 (초안 1회 + 수정 기회 3회)
 FAIRNESS_MAX_ITERATIONS = 3   # 공정/불공정 분류 재시도 최대 횟수
 CONFIDENCE_THRESHOLD = 0.8    # 공정/불공정 분류 반복 중단 기준 신뢰도
 
